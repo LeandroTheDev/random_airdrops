@@ -1,0 +1,15 @@
+Sandbox_EN = {
+	Sandbox_Airdrop = "Air Drop",
+
+	Sandbox_AD_AirdropRemovalTimer = "Airdrop Removal Time"
+	Sandbox_AD_AirdropRemovalTimer_tooltip = "In game hours until airdrop despawn"
+
+	Sandbox_AD_AirdropFrequency = "Airdrop Frequency"
+	Sandbox_AD_AirdropFrequency_tooltip = "Chance to spawn any airdrop every in game hour"
+
+	Sandbox_AD_AirdropTickCheck = "Airdrop Chunk Check Tick"
+	Sandbox_AD_AirdropTickCheck_tooltip = "This is the most performance important variable, impacts in how many ticks the server will WAIT to check player in area to spawn the airdrop (the airdrop doesnt spawn if player is not reendering)."
+
+	Sandbox_AD_AirdropConsoleDebug = "Debug"
+	Sandbox_AD_AirdropConsoleDebug_tooltip = "Print console debugging for cache airdrops."
+}
