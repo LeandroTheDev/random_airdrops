@@ -1,12 +1,14 @@
 # Random Airdrops
 A mod for Project Zomboid creating a fully random airdrops to the server, and also fully customizable, you can change the loot tables, hours to remove, chance to spawn every hour, spawn coordinates.
 
+The mod is compatible with dedicated servers and singleplayer
+
 ### Features
 - Airdrops never spawn above each other
 - Airdrops doenst despawn if player is close
-- Message to player chat when the airdrop is spawned + area name
+- Message to player chat when the airdrop is spawned + area name (Only in servers, because single player doenst have chat)
 - Air plane sound when the air drop spawn
-- If the servers close, old airdrops will be deleted automatically
+- If the servers close, old airdrops will be deleted automatically (Configurable)
 - Fully customizable loot table (see the github wiki)
 - Fully customizable spawn coordinates (see the github wiki)
 
