@@ -46,6 +46,7 @@ AirdropsToSpawn = {};
 -- OldAirdrops = List<spawnIndex> / old airdrops são todos aqueles airdrops que persistiram no mundo após servidor fechar
 -- OldAirdropsData = List<SpawnedAirdrops/airdrop==boolean> / dados do old airdrops contem dados apenas se DisableOldDespawn
 -- RemovingOldAirdrops = List<spawnIndex> / todos os airdrops que estão sendo removidos no checking, os dados são alocados no inicio do server
+-- SpecificAirdropsSpawned = List<spawnArea, ticksToDespawn> / todos os airdrops spawnados por outros mods
 AirdropsData = {};
 
 -- Lê as posições do arquivo de configurações
@@ -292,7 +293,7 @@ local function reduceTicksToDespawnFromOldAirdropsDataBySpawnIndex(spawnIndex)
 end
 
 -- Adiciona o aidrop no SpawnedAirdrops baseado no spawnIndex
-local function addAirdropToSpawnAirdropsBySpawnIndex(spawnIndex, airdrop)
+local function addAirdropToSpawnedAirdropsBySpawnIndex(spawnIndex, airdrop)
     -- Varredura nos SpawnedAirdrops
     for i = 1, #SpawnedAirdrops do
         -- Verifica se o spawnIndex é o mesmo do SpawnedAirdrops
@@ -493,8 +494,9 @@ function SpawnAirdrop()
     return spawnArea.name;
 end
 
--- Exclui todos os airdrops que estão setenciados
--- a não ser que tenha jogadores proximos ai ele não exclui
+-- Reduz a setença para despawnar, chamado a cada hora ingame
+-- se existir setenças Despawna os airdrops, caso for um Especial inicia
+-- o evento OnTick para ForceDespawnAirdrops
 function DespawnAirdrops()
     -- Precisamos salvar localmente a variavel para não ter atualizações indevidas
     -- durante o check, já que a atualização é feita durane o for
@@ -551,6 +553,20 @@ function DespawnAirdrops()
         end
     end
 
+    -- Varremos todos os airdrops especiais
+    for i = 1, #AirdropsData.SpecificAirdropsSpawned do
+        -- Verificamos a setença
+        if AirdropsData.SpecificAirdropsSpawned[i].ticksToDespawn <= 0 then
+            -- Removemos e adicionamos para não ter problemas de memoria e performance
+            Events.OnTick.Remove(ForceDespawnAirdrops);
+            Events.OnTick.Add(ForceDespawnAirdrops);
+        else
+            -- Reduzimos a setença
+            AirdropsData.SpecificAirdropsSpawned[i].ticksToDespawn = AirdropsData.SpecificAirdropsSpawned[i]
+                .ticksToDespawn - 1;
+        end
+    end
+
     -- Se o DisableOldDespawn estiver ativo, precisamos verificar o OldAirdropsData
     if SandboxVars.AirdropMain.AirdropDisableOldDespawn then
         -- Varremos todos os dados
@@ -582,12 +598,14 @@ function ForceDespawnAirdrops()
         return
     end
     ticksPerCheckDespawn = 0;
-    -- Verificamos se OldAirdrops esta vazio
-    if #AirdropsData.RemovingOldAirdrops == 0 then
+    -- Verificamos se RemovingOldAirdrops esta vazio e SpecificAirdropsSpawned esta vazio
+    if #AirdropsData.RemovingOldAirdrops == 0 and #AirdropsData.SpecificAirdropsSpawned == 0 then
         --Remove o evento
         Events.OnTick.Remove(ForceDespawnAirdrops);
         print("[Air Drop] Finished cleaning the old air drops")
     end
+
+    -- Varredura nos airdrops e despawnamos
     local localOldAirdrops = deepcopy(AirdropsData.RemovingOldAirdrops)
     for i = 1, #localOldAirdrops do
         -- Coletamos o spawn index
@@ -636,6 +654,91 @@ function ForceDespawnAirdrops()
             end;
         end
     end
+
+    -- Verificamos se esta ativo a configuracao DisaleOldSpawn
+    if SandboxVars.AirdropMain.AirdropDisableOldDespawn then
+        local empty = true;
+        local localSpecificAirdropsSpawned = deepcopy(AirdropsData.SpecificAirdropsSpawned)
+        for i = 1, #localSpecificAirdropsSpawned do
+            -- Precisamos checar se ticksToDespawn é menor ou igual a 0
+            -- ate pq ele nao pode despawnar se o ticks ainda não é 0
+            if localSpecificAirdropsSpawned[i].ticksToDespawn <= 0 then
+                empty = false;
+                -- Recebemos a spawn area
+                local spawnArea = localSpecificAirdropsSpawned[i].spawnArea
+                -- Coletamos o square
+                local square = getCell():getGridSquare(spawnArea.x, spawnArea.y, spawnArea.z);
+                if square then
+                    -- Coletamos o airdrop
+                    local airdrop = square:getVehicleContainer();
+                    -- Verificamos se veiculo não está nulo
+                    if airdrop then
+                        -- Verificamos se o veiculo é o airdrop
+                        if airdrop:getScriptName() == "Base.SurvivorSupplyDrop" then
+                            -- Removemos definitivamente
+                            airdrop:permanentlyRemove();
+                            -- Removemos do indice
+                            table.remove(AirdropsData.SpecificAirdropsSpawned, i);
+                            if SandboxVars.AirdropMain.AirdropConsoleDebugCoordinates then
+                                print("[Air Drop] SPECIFIC Despawn air drop has been removed in X:" ..
+                                    airdrop:getX() .. " Y:" .. airdrop:getY());
+                            end
+                        else
+                            print("[Air Drop] WARNING exist a vehicle in SPECIFIC airdrop spawn coordinate giving up...")
+                            -- Removemos do indice
+                            table.remove(AirdropsData.SpecificAirdropsSpawned, i);
+                        end
+                    else
+                        print("[Air Drop] WARNING chunk loaded but SPECIFIC airdrop not found, giving up")
+                        -- Removemos do indice
+                        table.remove(AirdropsData.SpecificAirdropsSpawned, i);
+                    end
+                end
+            end
+        end
+        -- Se SpecificAirdropsSpawned estiver vazio e RemovingOldAirdrops também então vamos cancelar isso
+        if empty and #AirdropsData.RemovingOldAirdrops == 0 then
+            --Remove o evento
+            Events.OnTick.Remove(ForceDespawnAirdrops);
+            print("[Air Drop] Finished cleaning the old air drops")
+        end
+    else
+        -- Airdrops spawnados pela função SpawnSpecificAirdrop, são diferentes
+        -- dos airdrops convensionais pois eles spawnam em locais diferentes dos indexs
+        local localSpecificAirdropsSpawned = deepcopy(AirdropsData.SpecificAirdropsSpawned)
+        for i = 1, #localSpecificAirdropsSpawned do
+            -- Recebemos a spawn area
+            local spawnArea = localSpecificAirdropsSpawned[i].spawnArea
+            -- Coletamos o square
+            local square = getCell():getGridSquare(spawnArea.x, spawnArea.y, spawnArea.z);
+            if square then
+                -- Coletamos o airdrop
+                local airdrop = square:getVehicleContainer();
+                -- Verificamos se veiculo não está nulo
+                if airdrop then
+                    -- Verificamos se o veiculo é o airdrop
+                    if airdrop:getScriptName() == "Base.SurvivorSupplyDrop" then
+                        -- Removemos definitivamente
+                        airdrop:permanentlyRemove();
+                        -- Removemos do indice
+                        table.remove(AirdropsData.SpecificAirdropsSpawned, i);
+                        if SandboxVars.AirdropMain.AirdropConsoleDebugCoordinates then
+                            print("[Air Drop] SPECIFIC Despawn air drop has been removed in X:" ..
+                                airdrop:getX() .. " Y:" .. airdrop:getY());
+                        end
+                    else
+                        print("[Air Drop] WARNING exist a vehicle in SPECIFIC airdrop spawn coordinate giving up...")
+                        -- Removemos do indice
+                        table.remove(AirdropsData.SpecificAirdropsSpawned, i);
+                    end
+                else
+                    print("[Air Drop] WARNING chunk loaded but SPECIFIC airdrop not found, giving up")
+                    -- Removemos do indice
+                    table.remove(AirdropsData.SpecificAirdropsSpawned, i);
+                end
+            end
+        end
+    end
 end
 
 -- Essa função checa se o chunk do airdrop esta sendo carrepado
@@ -680,7 +783,7 @@ function CheckForCreateAirdrop()
                 removeElementFromAirdropsToSpawnBySpawnIndex(spawnIndex);
 
                 -- Adicionamos o aidrop para lista de SpawnedAirdrops
-                addAirdropToSpawnAirdropsBySpawnIndex(spawnIndex, airdrop)
+                addAirdropToSpawnedAirdropsBySpawnIndex(spawnIndex, airdrop);
 
                 -- Precisamos verificar se DisableOldDespawn esta ativo
                 -- para podermos adicionar dizer que airdrop é true na lista de OldAirdropsData
@@ -705,6 +808,33 @@ function CheckForCreateAirdrop()
     end
 end
 
+-- Função para adicionar um airdrop especifico em uma posição especifica, não usada durante
+-- o mod, usado apenas em outros mods que necessitam spawnar um airdrop
+-- spawnArea recebe como parametro x = int, y = int, z = int, despawnam de acordo com a configuração atual
+function SpawnSpecificAirdrop(spawnArea)
+    local square = getCell():getGridSquare(spawnArea.x, spawnArea.y, spawnArea.z);
+
+    -- Verificamos se o square é valido
+    if square then
+        -- Criamos o veiculo no mundo, mais info olhe CheckForCreateAirdrop
+        local airdrop = addVehicleDebug("Base.SurvivorSupplyDrop", IsoDirections.N, nil, square);
+        -- Consertamos caso esteja quebrado
+        airdrop:repair();
+        -- Adicionamos os loots
+        spawnAirdropItems(airdrop);
+        table.insert(AirdropsData.SpecificAirdropsSpawned,
+            { spawnArea = spawnArea, ticksToDespawn = SandboxVars.AirdropMain.AirdropRemovalTimer });
+        -- Printa no console
+        if SandboxVars.AirdropMain.AirdropConsoleDebugCoordinates then
+            print("[Air Drop] Specific Airdrop Spawned in X:" ..
+                spawnArea.x .. " Y: " .. spawnArea.y);
+        end
+    else
+        print("[Air Drop] Specific Airdrop: Cannot spawn the square is invalid in X: " ..
+            spawnArea.x .. " Y: " .. spawnArea.y);
+    end
+end
+
 -- A cada hora dentro do jogo verifica se vai ter air drop
 Events.EveryHours.Add(CheckAirdrop);
 
@@ -713,6 +843,7 @@ Events.OnInitGlobalModData.Add(function(isNewGame)
     AirdropsData = ModData.getOrCreate("serverAirdropsData");
     -- Null Check
     if not AirdropsData.OldAirdrops then AirdropsData.OldAirdrops = {} end
+    if not AirdropsData.SpecificAirdropsSpawned then AirdropsData.SpecificAirdropsSpawned = {} end
     -- Carrega todas as configurações
     readAirdropsPositions();
     readAirdropsLootTable();
