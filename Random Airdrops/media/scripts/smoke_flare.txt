@@ -1,0 +1,24 @@
+module Base
+{
+	item SmokeFlare {
+                DisplayCategory = Junk,
+                Weight	=	0.0,
+                Type	=	Normal,
+                DisplayName	=	Smoke Flare,
+                Icon	=	SmokeFlare,
+                WorldStaticModel = Money,
+	}
+
+	recipe Use Smoke Flare {
+                SmokeFlare,
+      
+                CanBeDoneFromFloor:true,
+                Time:100,
+                RemoveResultItem:true,
+                Result:SmokeFlare=1,
+                Sound:Hammering,
+                AnimNode:Craft,
+                Category:General,
+                OnGiveXP:GiveHordeBeacon,
+        }
+}

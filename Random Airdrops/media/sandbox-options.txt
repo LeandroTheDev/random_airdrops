@@ -46,6 +46,26 @@ option AirdropMain.AirdropDisableOldDespawn
 	translation = AD_AirdropDisableOldDespawn,
 }
 
+option AirdropMain.SmokeFlareHorde
+{
+	type = integer,
+	min = 0,
+	max = 7200,
+	default = 800,
+	page = Airdrop,
+	translation = AD_SmokeFlareHorde,
+}
+
+option AirdropMain.SmokeFlareHordeDistanceSpawn
+{
+	type = integer,
+	min = 10,
+	max = 90,
+	default = 75,
+	page = Airdrop,
+	translation = AD_SmokeFlareHordeDistanceSpawn,
+}
+
 option AirdropMain.AirdropConsoleDebug
 {
 	type = boolean,

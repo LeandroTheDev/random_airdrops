@@ -13,12 +13,12 @@ Sandbox_EN = {
 	Sandbox_AD_AirdropDisableDespawn = "Disable Despawn"
 	Sandbox_AD_AirdropDisableDespawn_tooltip = "Removes the despawn in game hours system for airdrops."
 
-	Sandbox_AD_AirdropConsoleDebug = "Disable Old Despawn"
-	Sandbox_AD_AirdropConsoleDebug_tooltip = "Disables the despawn all airdrops system when the server/game start."
+	Sandbox_AD_AirdropDisableOldDespawn = "Disable Old Despawn"
+	Sandbox_AD_AirdropDisableOldDespawn_tooltip = "Disables the despawn all airdrops system when the server/game start."
 
 	Sandbox_AD_AirdropConsoleDebug = "Debug Cache"
 	Sandbox_AD_AirdropConsoleDebug_tooltip = "Print console debugging for cache airdrops."
 
-	Sandbox_AD_AirdropConsoleDebug = "Debug Coordinates"
-	Sandbox_AD_AirdropConsoleDebug_tooltip = "Print console debugging for coordinates airdrops when spawn, disabling that you cannot know in server-console.txt when and where the airdrop spawned."
+	Sandbox_AD_AirdropConsoleDebugCoordinates = "Debug Coordinates"
+	Sandbox_AD_AirdropConsoleDebugCoordinates_tooltip = "Print console debugging for coordinates airdrops when spawn, disabling that you cannot know in server-console.txt when and where the airdrop spawned."
 }
