@@ -530,7 +530,8 @@ function DespawnAirdrops()
             else -- Caso o airdrop foi criado então temos alguma validações
                 -- Checamos se existe algum jogador por perto
                 local havePlayerAround = checkPlayersAround(airdrop);
-
+                -- Agora precisamos das tabelas
+                local spawnIndex = localSpawnedAirdrops[i].index;
                 -- Se não há jogadores por perto
                 if not havePlayerAround then
                     -- Removemos permanentemente do mundo
