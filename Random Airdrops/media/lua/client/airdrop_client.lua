@@ -71,34 +71,5 @@ local function OnServerCommand(module, command, arguments)
 		addLineToChat(getText("IGUI_Airdrop_Incoming") .. ": " .. getText("IGUI_Airdrop_Name_" .. arguments.name),
 			"<RGB:" .. "0,255,0" .. ">");
 	end
-	-- Alerta de som quando jogador usar o sinalizador
-	if module == "ServerAirdrop" and command == "smokeflare" then
-		-- Texto do Som para emitir ao jogador
-		local alarmSound = "smokeflareradio" .. tostring(ZombRand(1));
-
-		-- O som que vai sair
-		local sound = getSoundManager():PlaySound(alarmSound, false, 0);
-		-- Soltamos o som para o jogador
-		getSoundManager():PlayAsMusic(alarmSound, sound, false, 0);
-		sound:setVolume(0.4);
-
-		-- Mensagem no chat dizendo que esta spawnando
-		addLineToChat(
-			getText("IGUI_Airdrop_Smoke_Flare_Message"), "<RGB:" .. "255,0,0" .. ">");
-	end
-	if module == "ServerAirdrop" and command == "smokeflare_finished" then
-		-- Texto do Som para emitir ao jogador
-		local alarmSound = "airdrop" .. tostring(ZombRand(1));
-
-		-- O som que vai sair
-		local sound = getSoundManager():PlaySound(alarmSound, false, 0);
-		-- Soltamos o som para o jogador
-		getSoundManager():PlayAsMusic(alarmSound, sound, false, 0);
-		sound:setVolume(0.1);
-
-		-- Mensagem no chat dizendo que esta spawnando
-		addLineToChat(
-			getText("IGUI_Airdrop_Spawned"), "<RGB:" .. "255,0,0" .. ">");
-	end
 end
 Events.OnServerCommand.Add(OnServerCommand)

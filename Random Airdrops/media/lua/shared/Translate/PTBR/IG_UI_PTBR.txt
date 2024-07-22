@@ -1,6 +1,5 @@
 IGUI_PTBR = {
 	IGUI_Airdrop_Incoming = "Airdrop Chegando em",
-	IGUI_Airdrop_Incoming = "Airdrop Chegando em",
 	IGUI_Airdrop_Name_March_Ridge = "March Ridge",
 	IGUI_Airdrop_Name_Muldraught = "Muldraught",
 	IGUI_Airdrop_Name_Dixie = "Dixie",

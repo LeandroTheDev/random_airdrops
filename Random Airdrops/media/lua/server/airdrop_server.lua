@@ -1,16 +1,15 @@
 ---@diagnostic disable: undefined-global, deprecated
--- By bobodev o brabo tem nome 😊😊
+-- By bobodev the furious has a name 😊😊
 
--- Variaveis de performance
--- aguardamos tal tick para fazer o check de airdrops para spawnar/despawnar
-local ticksPerCheck = 0;
-local ticksPerCheckDespawn = 0;
-local ticksMax = SandboxVars.AirdropMain.AirdropTickCheck;
-local giveUpDespawn = 0;
+-- Performance variables
+-- ticks to wait to spawn or despawn the airdrop
+local ticksPerCheck = 0;                                   -- Used for spawn
+local ticksPerCheckDespawn = 0;                            -- Used for despawn
+local ticksMax = SandboxVars.AirdropMain.AirdropTickCheck; -- Used for storing the tickrate passed when using the ticksPerCheck/ticksPerCheckDespawn
+local giveUpDespawn = 0;                                   -- Used when we cannot despawn the airdrop, because the airdrop is missing
 
--- Lua Utils
-
--- Clona a tabela inteira
+-- #region Lua Utils
+-- Clone the entire table
 local function deepcopy(orig)
     local copy
 
@@ -26,30 +25,58 @@ local function deepcopy(orig)
 
     return copy
 end
+-- #endregion
 
--- Guarda localmente todas as posições que podem nascer airdrop
+-- Stores the Lua config with the spawner positions
+-- [
+--  {
+--      x = 10,
+--      y = 10,
+--      z = 1,
+--      name = "Example"
+--  }
+-- ]
 local airdropPositions = {};
--- Guarda localmente todos os items para spawnar no airdrop
+-- Stores the Lua config with the items to spawn in airdrop
+-- {
+--  {
+--      type = "combo",
+--      chance = 100,
+--      child = {
+--          type = "item",
+--          chance = 100,
+--          quantity = 5,
+--          child = "Base.Axe"
+--      }
+--  }
+-- }
 local airdropLootTable = {};
--- Guarda globalmente todos os airdrops já spawnados
--- para futuramente serem excluidos
--- airdrop = BaseVehicle / Literalmente o airdrop / sera nulo quando o airdrop ainda não foi criado!!!
--- ticksToDespawn = int / quadno esta variavel chegar a 0 o airdrop sera excluido na funcao DespawnAirdrops
--- index = int / é o index do airdropPositions, usamos para verificar se ja foi spawnado naquela área / spawnIndex
+-- Stores globally all airdrops that has already spawned
+-- this variable is used to remove the airdrop after some configurated time
+-- [
+--  {
+--      airdrop = BaseVehicle / The airdrop instance / should be null if not created yet (in the world)
+--      ticksToDespawn = int / used to check if the airdrop needs to be despawned, DespawnAirdrops use this
+--      index = int / the index from the airdropPositions
+--  }
+-- ]
 SpawnedAirdrops = {};
--- Guarda globalmente os airdrops que ainda vão spawnar mas não foram spawnadows porque ninguem carregou o chunk
--- essa variavel é utilizada sempre que for diferente de 0 para verificar se algum player esta
--- carregando o chunk
--- possui apenas o elemento index do airdropPositions / spawnIndex
+-- Stores globally the airdrops that is not created in the world yet
+-- used for the function CheckForCreateAirdrop, that always tries to
+-- spawn the airdrop, (airdrops cannot be spawned if the chunk not loaded)
+-- [
+--  1, / airdropPositions - index
+--  2, / airdropPositions - index
+-- ]
 AirdropsToSpawn = {};
--- Guarda os dados do mod
--- OldAirdrops = List<spawnIndex> / old airdrops são todos aqueles airdrops que persistiram no mundo após servidor fechar
--- OldAirdropsData = List<SpawnedAirdrops/airdrop==boolean> / dados do old airdrops contem dados apenas se DisableOldDespawn
--- RemovingOldAirdrops = List<spawnIndex> / todos os airdrops que estão sendo removidos no checking, os dados são alocados no inicio do server
--- SpecificAirdropsSpawned = List<spawnArea, ticksToDespawn> / todos os airdrops spawnados por outros mods
+-- Stores the airdrop datas
+-- OldAirdrops = List<spawnIndex> / stores all airdrops indexes that needs to be removed after the server closes: [1,2,3]
+-- OldAirdropsData = List<spawnArea, ticksToDespawn> / old airdrop datas, used when the DisableOldDespawn is true: [{ticksToDespawn = 1, index = 1}]
+-- RemovingOldAirdrops = List<spawnIndex> / all airdrops to be removed, allocated when starting the server: [1,2,3]
+-- SpecificAirdropsSpawned = List<spawnArea, ticksToDespawn> / all airdrops spawneds by other mods: [{ticksToDespawn = 1, index = 1}]
 AirdropsData = {};
 
--- Lê as posições do arquivo de configurações
+-- Read airdrop positions from Lua file
 local function readAirdropsPositions()
     print("[Air Drop] Loading air drops positions...")
     local fileReader = getFileReader("AirdropPositions.ini", true)
@@ -64,7 +91,7 @@ local function readAirdropsPositions()
     print("[Air Drop] Positions loaded");
 end
 
--- Lê os items do arquivo de configurações
+-- Read airdrop loot table from Lua file
 local function readAirdropsLootTable()
     print("[Air Drop] Loading air drops loot table...")
     local fileReader = getFileReader("AirdropLootTable.ini", true)
@@ -79,17 +106,17 @@ local function readAirdropsLootTable()
     print("[Air Drop] Loot table loaded");
 end
 
--- Checa se tem players proximo ao airdrop recebido como parametro
+-- Check if exist player reading the airdrop chunk
 local function checkPlayersAround(airdrop)
-    -- Obtemos a coordenada do airdrop
+    -- Getting airdrop coords
     local airdropX = airdrop:getX();
     local airdropY = airdrop:getY();
     local airdropZ = airdrop:getZ();
 
-    -- Coleta o grid
+    -- Pikcup the airdrop square
     local square = getCell():getGridSquare(airdropX, airdropY, airdropZ);
 
-    -- Se o grid existe é porque tem um jogador carregando o chunk
+    -- If the square exist, theres is a player loading the chunk
     if square then
         print("[Air Drop] Cannot despawn airdrop, a player is rendering close");
         return true;
@@ -98,22 +125,23 @@ local function checkPlayersAround(airdrop)
     end
 end
 
--- Recebe o airdrop como parametro e adiciona itens a ele
+-- Add items to the airdrop
 local function spawnAirdropItems(airdrop)
-    -- se tu entender como isso funciona... te dou 10 conto no pix (mentira)
-    -- Coletamos o container do airdrop
+    -- if you understand how this function works, i give you 10 bucks (joking)
+    -- Colecting the airdrop container
     local airdropContainer = airdrop:getPartById("TruckBed"):getItemContainer();
 
-    -- Para o atributo id, id's de elementos que estejam aqui dentro são ignorados
+    -- Used for the ID attribute, all ids stored here will be ignored during the loot spawn
     local idSpawneds = {};
 
     local alocatedSelectedType
-    -- Varre a lista e chama as funções a partir do type
-    -- as funcoes precisam ser colocadas como parametro
-    -- pois as funcoes sao referenciadas depois de listSpawn
+    -- swipe the list and call the functions
+    -- based on the type.
+    -- the function needs to be an parameter because
+    -- its is referenced after the listSpawn
     local function listSpawn(list, selectType)
         alocatedSelectedType = selectType;
-        -- Varremos todos os elementos do loot table
+        -- Swipe all elements from the list
         for i = 1, #list do
             selectType(list[i]);
         end
@@ -133,89 +161,88 @@ local function spawnAirdropItems(airdrop)
     -- Type: oneof
     local function spawnOneof(child)
         local selectedIndex = ZombRand(#child) + 1;
-        -- Precisamos criar uma template table porque listSpawn so aceita lista kkk sou burror
-        -- e estamos inserindo apenas o elemento então temos uma tabela com o elemento dentro
+        -- listSpawn only accepts lists so we needs to get the specific item
         alocatedSelectedType(child[selectedIndex]);
     end
 
     local function selectType(element)
         local jump = false;
-        -- Checamos se a variavel id existe
+        -- Checking if the variable ID exist
         if element.id then
-            -- Verificamos se o id ja foi adicionado
+            -- Verifying if the id has already added
             if idSpawneds[element.id] then jump = true end
         end
-        -- Checa se chance é nulo
+        -- Checking if the chancce is null
         if not element.chance then element.chance = 100 end
-        -- Verificamos se não precisa pular
+        -- Verifying if doesnt need to jump
         if not jump then
-            -- Verificamos o tipo
+            -- Verifying the type
             if element.type == "combo" then
-                -- Verifica se o elemento tem id
+                -- Veryfing if the element has any ID
                 if element.id then
-                    -- Se tiver adicione a tabela de id spawnados
+                    -- If exist then add it to the idSpawneds list
                     idSpawneds[element.id] = true;
                 end
-                -- Verificamos se quantity não é nulo
+                -- Verifying if quantity is not null
                 if element.quantity then
-                    -- Adicionamos conforme a quantidade
+                    -- Add based on the quantity
                     for _ = 1, element.quantity do
-                        -- Verificamos a chance pra spawnar o child
+                        -- Getting the chance to spawn the child
                         if ZombRand(100) + 1 <= element.chance then
-                            -- Adicionamos o item
+                            -- Adding the item
                             spawnCombo(element.child);
                         end
                     end
                 else
-                    -- Verificamos a chance pra spawnar o child
+                    -- Getting the chance to spawn the child
                     if ZombRand(100) + 1 <= element.chance then
-                        -- Adicionamos o item
+                        -- Adding the item
                         spawnCombo(element.child);
                     end
                 end
             elseif element.type == "item" then
-                -- Verifica se o elemento tem id
+                -- Veryfing if the element has any ID
                 if element.id then
-                    -- Se tiver adicione a tabela de id spawnados
+                    -- If exist then add it to the idSpawneds list
                     idSpawneds[element.id] = true;
                 end
-                -- Verificamos se quantity não é nulo
+                -- Verifying if quantity is not null
                 if element.quantity then
-                    -- Adicionamos conforme a quantidade
+                    -- Add based on the quantity
                     for _ = 1, element.quantity do
-                        -- Verificamos a chance pra spawnar o child
+                        -- Getting the chance to spawn the child
                         if ZombRand(100) + 1 <= element.chance then
-                            -- Adicionamos o item
+                            -- Adding the item
                             spawnItem(element.child);
                         end
                     end
                 else
-                    -- Verificamos a chance pra spawnar o child
+                    -- Getting the chance to spawn the child
                     if ZombRand(100) + 1 <= element.chance then
-                        -- Adicionamos o item
+                        -- Adding the item
                         spawnItem(element.child);
                     end
                 end
             elseif element.type == "oneof" then
-                -- Verifica se o elemento tem id
+                -- Verifying if the element has any ID
                 if element.id then
-                    -- Se tiver adicione a tabela de id spawnados
+                    -- If have add it to idSpawneds list
                     idSpawneds[element.id] = true;
                 end
-                -- Verificamos se quantity não é nulo
+                -- Verifying if quantity is not null
                 if element.quantity then
-                    -- Adicionamos conforme a quantidade
+                    -- Adding based on the quantity
                     for _ = 1, element.quantity do
-                        -- Verificamos a chance pra spawnar o child
+                        -- Getting the chance to spawn the child
                         if ZombRand(100) + 1 <= element.chance then
-                            -- Adicionamos o item
+                            -- Adding the item
                             spawnOneof(element.child);
                         end
                     end
                 else
-                    -- Verificamos a chance pra spawnar o child
+                    -- Getting the chance to spawn the child
                     if ZombRand(100) + 1 <= element.chance then
-                        -- Adicionamos o item
+                        -- Adding the item
                         spawnOneof(element.child);
                     end
                 end
@@ -223,109 +250,97 @@ local function spawnAirdropItems(airdrop)
         end
     end
 
-    -- Iniciamos o spawn de loot
+    -- Start the loot spawnm
     listSpawn(airdropLootTable, selectType);
 end
 
--- Remove o elemento da variavel AirdropsToSpawn pelo spawnIndex
+-- Remove the element of AirdropsToSpawen by the Spawn Index
 local function removeElementFromAirdropsToSpawnBySpawnIndex(spawnIndex)
-    -- Varredura nos AirdropsToSpawn
+    -- Swipe in AirdropsToSpawn
     for i = 1, #AirdropsToSpawn do
-        -- Verifica se o spawnIndex é o mesmo do AirdropsToSpawn
+        -- Verify if the spawnIndex is the same as AirdropsToSpawn
         if spawnIndex == AirdropsToSpawn[i] then
-            -- Remove da tabela
+            -- Remove from table
             table.remove(AirdropsToSpawn, i);
             break;
         end
     end
 end
 
--- Remove o elemento da variavel SpawnedAirdrops pelo spawnIndex
+-- Remove the elemnt of SpawnedAirdrops by the Spawn Index
 local function removeElementFromSpawnedAirdropsBySpawnIndex(spawnIndex)
-    -- Varredura nos AirdropsToSpawn
+    -- Swipe in SpawnedAirdrops
     for i = 1, #SpawnedAirdrops do
-        -- Verifica se o spawnIndex é o mesmo do SpawnedAirdrops
+        -- Verify if the spawnIndex is the same as SpawnedAirdrops
         if spawnIndex == SpawnedAirdrops[i].index then
-            -- Remove da tabela
+            -- Remove from table
             table.remove(SpawnedAirdrops, i);
             break;
         end
     end
 end
 
--- Remove o elemento da variavel SpawnedAirdrops pelo spawnIndex
+-- Remove the element from the AirdropsData by the Index
 local function removeElementFromOldAirdropsDataBySpawnIndex(spawnIndex)
-    -- Varredura nos AirdropsToSpawn
+    -- Swipe in AirdropsData
     for i = 1, #AirdropsData.OldAirdropsData do
-        -- Verifica se o spawnIndex é o mesmo do SpawnedAirdrops
+        -- Verify if the spawnIndex is the same as AirdropsData
         if spawnIndex == AirdropsData.OldAirdropsData[i].index then
-            -- Remove da tabela
+            -- Remove from table
             table.remove(AirdropsData.OldAirdropsData, i);
             break;
         end
     end
 end
 
--- Reduz o ticksToDespawn baseado no spawnIndex
+-- Reduce the ticksToDespawn based on spawnIndex
 local function reduceTicksToDespawnFromSpawnedAirdropsBySpawnIndex(spawnIndex)
-    -- Varredura nos AirdropsToSpawn
+    -- Swipe in SpawnedAirdrops
     for i = 1, #SpawnedAirdrops do
-        -- Verifica se o spawnIndex é o mesmo do SpawnedAirdrops
+        -- Verify if the spawnIndex is the same as SpawnedAirdrops
         if spawnIndex == SpawnedAirdrops[i].index then
-            -- Reduz da tabela
+            -- Reduce from the table
             SpawnedAirdrops[i].ticksToDespawn = SpawnedAirdrops[i].ticksToDespawn - 1;
             break;
         end
     end
 end
 
--- Reduz o ticksToDespawn baseado no spawnIndex
+-- Reduce the ticksToDespawn based on spawnIndex
 local function reduceTicksToDespawnFromOldAirdropsDataBySpawnIndex(spawnIndex)
-    -- Varredura nos AirdropsToSpawn
+    -- Swipe in OldAirdropsData
     for i = 1, #AirdropsData.OldAirdropsData do
-        -- Verifica se o spawnIndex é o mesmo do SpawnedAirdrops
+        -- Verify if the spawnIndex is the same as OldAirdropsData
         if spawnIndex == AirdropsData.OldAirdropsData[i].index then
-            -- Reduz da tabela
+            --- Reduce from the table
             AirdropsData.OldAirdropsData[i].ticksToDespawn = AirdropsData.OldAirdropsData[i].ticksToDespawn - 1;
             break;
         end
     end
 end
 
--- Adiciona o aidrop no SpawnedAirdrops baseado no spawnIndex
+-- Add the airdrop in SpawnedAirdrops based on spawnIndex
 local function addAirdropToSpawnedAirdropsBySpawnIndex(spawnIndex, airdrop)
-    -- Varredura nos SpawnedAirdrops
+    -- Swipe in SpawnedAirdrops
     for i = 1, #SpawnedAirdrops do
-        -- Verifica se o spawnIndex é o mesmo do SpawnedAirdrops
+        -- Verifying if spawnIndex is the same from SpawnedAirdrops
         if spawnIndex == SpawnedAirdrops[i].index then
-            -- Adicionamos o airdrop a lista de SpawnedAirdrops
+            -- Add the airdrop to the SpawnedAirdrops index
             SpawnedAirdrops[i].airdrop = airdrop;
-            -- Adicionamos o id do airdrop a lista de OldAirdrops
+            -- Adding the spawnIndex to OldAirdrops to be removed
             table.insert(AirdropsData.OldAirdrops, spawnIndex);
             break;
         end
     end
 end
 
--- Adiciona o aidrop no SpawnedAirdrops baseado no spawnIndex
-local function addTrueToOldAirdropsDataBySpawnIndex(spawnIndex)
-    -- Varredura nos SpawnedAirdrops
-    for i = 1, #AirdropsData.OldAirdropsData do
-        -- Verifica se o spawnIndex é o mesmo do OldAirdropsData
-        if spawnIndex == AirdropsData.OldAirdropsData[i].index then
-            -- Colocamos para true
-            AirdropsData.OldAirdropsData[i].airdrop = true;
-            break;
-        end
-    end
-end
-
--- Remove o da lista de OldAirdrops pelo Id do airdrop
+-- Remove the airdrop from the OldAirdrops based in spawnIndex
 local function removeAirdropFromOldAirdropsBySpawnIndex(spawnIndex)
-    -- Varredura nos OldAirdrops
+    -- Swipe all OldAirdrops
     for i = 1, #AirdropsData.OldAirdrops do
-        -- Verifica se o id é o mesmo do OldAirdrops
+        -- Verifying if the spawnIndex is the same as OldAirdrops
         if spawnIndex == AirdropsData.OldAirdrops[i] then
+            -- Remove it from the table
             table.remove(AirdropsData.OldAirdrops, i)
             break;
         end
@@ -344,64 +359,63 @@ local function removeAirdropFromRemovingAirdropsBySpawnIndex(spawnIndex)
     end
 end
 
--- Verifica atraves do spawnIndex se existe um OldAirdrops naquela posição
+-- DEPRECATED, not necessary: Verify with the airdrop spawnIndex if exist any OldAirdrop in that position
 local function checkOldAirdropsExistenceBySpawnIndex(spawnIndex)
-    -- Varredura nos OldAirdrops
+    -- Swipe OldAirdrops
     for i = 1, #AirdropsData.OldAirdrops do
-        -- Verifica se o id é o mesmo do OldAirdrops
+        -- Verifying if the ID is the same
         if spawnIndex == AirdropsData.OldAirdrops[i] then
-            -- Então existe sim um OldAirdrops
+            -- Exist
             return true;
         end
     end
-    -- Não existe nenhum OldAirdrops
+    -- Not exist
     return false;
 end
 
--- Verifica a existencia do index em SpawnedAirdrops
+-- Verify if exist any spawnIndex in SpawnedAirdrops
 local function checkSpawnAirdropsExistenceBySpawnIndex(spawnIndex)
-    -- Varredura SpawnedAirdrops
+    -- Swipe in SpawnedAirdrops
     for i = 1, #SpawnedAirdrops do
-        -- Verifica se o id é o mesmo do SpawnedAirdrops
+        -- Verifying if the spawnIndex is the same
         if spawnIndex == SpawnedAirdrops[i].index then
-            -- Então existe sim o Index
+            -- Exist
             return true;
         end
     end
-    -- Não existe nenhum Index
+    -- Not exist
     return false;
 end
 
--- Checa se é vai spawnar um airdrop
+-- Check if it will spawn any airdrop
 function CheckAirdrop()
-    -- Fazemos um check para despawnar os Airdrops Anteriores
+    -- Also try to despawn airdrops
     if not SandboxVars.AirdropMain.AirdropDisableDespawn then
         DespawnAirdrops();
     end
-    -- Checa se vai ter um airdrop nesta chamada 5% de chance
+    -- Check if should spawn any airdrop
     if ZombRand(100) + 1 <= SandboxVars.AirdropMain.AirdropFrequency then
-        -- Spawna uma unidade de airdrop
+        -- Spawning the airdrop
         local airdropLocationName = SpawnAirdrop();
-        -- Verificamos se ele de fato spawnou um airdrop
-        -- afinal em casos de erros ele não ira spawnar
+        -- Veryfing if the airdrop sucessfully spawned
         if not airdropLocationName then return end;
-        -- Obtém a lista de jogadores online
+        -- Get the online player list
         local players = getOnlinePlayers();
-        -- Compatibilidade com singleplayer
+        -- Singleplayer compatibility
         if not players then
-            -- Texto do Som para emitir ao jogador
+            -- Sound to send to the player
             local alarmSound = "airdrop" .. tostring(ZombRand(1));
-            -- Alocamos o som que vai sair
+            -- Alocate the sound in memory
             local sound = getSoundManager():PlaySound(alarmSound, false, 0);
-            -- Soltamos o som parao  jogador
+            -- Give it to the player
             getSoundManager():PlayAsMusic(alarmSound, sound, false, 0);
             sound:setVolume(0.1);
-        else -- Caso contrario é um servidor prossiga normal
-            -- Alertamos todos os jogadores que um airdrop foi spawnado
+        else -- Server side
+            -- Alert the players that the airdrop has spawned
             for i = 0, players:size() - 1 do
-                -- Obtém o jogador pelo índice
+                -- Get the player by index
                 local player = players:get(i)
-                -- Emite o alerta ao jogador
+                -- Alert the player
                 sendServerCommand(player, "ServerAirdrop", "alert", { name = airdropLocationName });
             end
         end
@@ -410,17 +424,18 @@ function CheckAirdrop()
     end
 end
 
--- Spawna um airdrop ao mundo aleatoriamente
+-- Spawn any random airdrop on the world based on AirdropPositions
 function SpawnAirdrop()
     local spawnIndex = 0;
 
-    -- Seleciona aleatoriamente uma area de spawn que não foi spawnada ainda
+    -- Select any area randomly 
     local tries = 20;
     while tries > 0 do
-        -- Checa se airdropPositions é vazio
+        -- Check if airdropPositions is empty
         if #airdropPositions == 0 then
             tries = 0; break;
         end
+        -- Getting the spawn index
         spawnIndex = ZombRand(#airdropPositions) + 1
         local alreadySpawned = false;
         -- Varre todos os airdrops spawnados para ver se o index é diferente
@@ -511,7 +526,7 @@ function DespawnAirdrops()
             -- Checamos se airdrop é nulo e se esta setenciado
             -- Se estiver nulo significa que ele ainda não foi spawnado oficialmente
             if not airdrop then
-                -- Agora precisamos das tabelas
+                -- Getting the spawnIndex from SpawnedAirdrops
                 local spawnIndex = localSpawnedAirdrops[i].index;
                 -- Pegamos as posições diretamente do airdropPositions
                 -- porque o aidrop não foi spawnado ainda
@@ -530,13 +545,15 @@ function DespawnAirdrops()
             else -- Caso o airdrop foi criado então temos alguma validações
                 -- Checamos se existe algum jogador por perto
                 local havePlayerAround = checkPlayersAround(airdrop);
-                -- Agora precisamos das tabelas
-                local spawnIndex = localSpawnedAirdrops[i].index;
+
                 -- Se não há jogadores por perto
                 if not havePlayerAround then
                     -- Removemos permanentemente do mundo
                     airdrop:permanentlyRemove();
                     print("[Air Drop] Air drop has been removed in X:" .. airdrop:getX() .. " Y:" .. airdrop:getY());
+
+                    -- Getting the spawnIndex from SpawnedAirdrops
+                    local spawnIndex = localSpawnedAirdrops[i].index;
                     -- Removemos da nossa lista de SpawnedAirdrops
                     removeElementFromSpawnedAirdropsBySpawnIndex(spawnIndex);
                     -- Removemos da nossa lista de OldAirdrops
@@ -558,6 +575,10 @@ function DespawnAirdrops()
     for i = 1, #AirdropsData.SpecificAirdropsSpawned do
         -- Verificamos a setença
         if AirdropsData.SpecificAirdropsSpawned[i].ticksToDespawn <= 0 then
+            -- Remove from specific list
+            table.remove(AirdropsData.SpecificAirdropsSpawned, i);
+            -- Add it to the old list
+            table.insert(AirdropsData.OldSpecificAirdropsSpawned, AirdropsData.SpecificAirdropsSpawned[i]);
             -- Removemos e adicionamos para não ter problemas de memoria e performance
             Events.OnTick.Remove(ForceDespawnAirdrops);
             Events.OnTick.Add(ForceDespawnAirdrops);
@@ -600,10 +621,18 @@ function ForceDespawnAirdrops()
     end
     ticksPerCheckDespawn = 0;
     -- Verificamos se RemovingOldAirdrops esta vazio e SpecificAirdropsSpawned esta vazio
-    if #AirdropsData.RemovingOldAirdrops == 0 and #AirdropsData.SpecificAirdropsSpawned == 0 then
-        --Remove o evento
-        Events.OnTick.Remove(ForceDespawnAirdrops);
-        print("[Air Drop] Finished cleaning the old air drops")
+    if SandboxVars.AirdropMain.AirdropDisableOldDespawn then
+        if #AirdropsData.RemovingOldAirdrops == 0 and #AirdropsData.SpecificAirdropsSpawned == 0 then
+            --Remove o evento
+            Events.OnTick.Remove(ForceDespawnAirdrops);
+            print("[Air Drop] Finished cleaning the old air drops")
+        end
+    else -- Verificamos se RemovingOldAirdrops esta vazio e OldSpecificAirdropsSpawned esta vazio
+        if #AirdropsData.RemovingOldAirdrops == 0 and #AirdropsData.OldSpecificAirdropsSpawned == 0 then
+            --Remove o evento
+            Events.OnTick.Remove(ForceDespawnAirdrops);
+            print("[Air Drop] Finished cleaning the old air drops")
+        end
     end
 
     -- Varredura nos airdrops e despawnamos
@@ -622,7 +651,7 @@ function ForceDespawnAirdrops()
             -- Verificamos se veiculo não está nulo
             if airdrop then
                 -- Verificamos se o veiculo é o airdrop
-                if airdrop:getScriptName() == "Base.airdrop" then
+                if airdrop:getScriptName() == "Base.SurvivorSupplyDrop" then
                     -- Removemos definitivamente
                     airdrop:permanentlyRemove();
                     removeAirdropFromRemovingAirdropsBySpawnIndex(spawnIndex)
@@ -675,7 +704,7 @@ function ForceDespawnAirdrops()
                     -- Verificamos se veiculo não está nulo
                     if airdrop then
                         -- Verificamos se o veiculo é o airdrop
-                        if airdrop:getScriptName() == "Base.airdrop" then
+                        if airdrop:getScriptName() == "Base.SurvivorSupplyDrop" then
                             -- Removemos definitivamente
                             airdrop:permanentlyRemove();
                             -- Removemos do indice
@@ -706,36 +735,59 @@ function ForceDespawnAirdrops()
     else
         -- Airdrops spawnados pela função SpawnSpecificAirdrop, são diferentes
         -- dos airdrops convensionais pois eles spawnam em locais diferentes dos indexs
-        local localSpecificAirdropsSpawned = deepcopy(AirdropsData.SpecificAirdropsSpawned)
+        -- usamos o old para nao excluir os novos obviamente
+        local localSpecificAirdropsSpawned = deepcopy(AirdropsData.OldSpecificAirdropsSpawned)
         for i = 1, #localSpecificAirdropsSpawned do
             -- Recebemos a spawn area
             local spawnArea = localSpecificAirdropsSpawned[i].spawnArea
-            -- Coletamos o square
-            local square = getCell():getGridSquare(spawnArea.x, spawnArea.y, spawnArea.z);
-            if square then
-                -- Coletamos o airdrop
-                local airdrop = square:getVehicleContainer();
-                -- Verificamos se veiculo não está nulo
-                if airdrop then
-                    -- Verificamos se o veiculo é o airdrop
-                    if airdrop:getScriptName() == "Base.airdrop" then
-                        -- Removemos definitivamente
-                        airdrop:permanentlyRemove();
-                        -- Removemos do indice
-                        table.remove(AirdropsData.SpecificAirdropsSpawned, i);
-                        if SandboxVars.AirdropMain.AirdropConsoleDebugCoordinates then
-                            print("[Air Drop] SPECIFIC Despawn air drop has been removed in X:" ..
-                                airdrop:getX() .. " Y:" .. airdrop:getY());
+
+            -- Retorna verdadeiro se removeu com sucesso um airdrop, falso caso nao tenha removido
+            local function tryRemoveAirdrop(square)
+                if square then
+                    -- Coletamos o airdrop
+                    local airdrop = square:getVehicleContainer();
+                    -- Verificamos se veiculo não está nulo
+                    if airdrop then
+                        -- Verificamos se o veiculo é o airdrop
+                        if airdrop:getScriptName() == "Base.SurvivorSupplyDrop" then
+                            -- Removemos definitivamente
+                            airdrop:permanentlyRemove();
+                            -- Removes do indice old
+                            if SandboxVars.AirdropMain.AirdropConsoleDebugCoordinates then
+                                print("[Air Drop] Specific airdrop has been removed in X:" ..
+                                    airdrop:getX() .. " Y:" .. airdrop:getY());
+                            end
+                            return "removed";
+                        else
+                            --print("[Air Drop] WARNING exist a vehicle in SPECIFIC airdrop spawn coordinate giving up...")
+                            return "vehicleExist";
                         end
                     else
-                        print("[Air Drop] WARNING exist a vehicle in SPECIFIC airdrop spawn coordinate giving up...")
-                        -- Removemos do indice
-                        table.remove(AirdropsData.SpecificAirdropsSpawned, i);
+                        --print("[Air Drop] WARNING chunk loaded but SPECIFIC airdrop not found, giving up");
+                        return "airdropMissing";
                     end
-                else
-                    print("[Air Drop] WARNING chunk loaded but SPECIFIC airdrop not found, giving up")
-                    -- Removemos do indice
-                    table.remove(AirdropsData.SpecificAirdropsSpawned, i);
+                end
+                return "notLoaded";
+            end
+
+            -- Tentamos encontrar o airdrop numa area de 5x5
+            local removeResult = "notLoaded";
+            for dx = -5, 5 do
+                for dy = -5, 5 do
+                    local square = getCell():getGridSquare(spawnArea.x + dx, spawnArea.y + dy, spawnArea.z);
+                    removeResult = tryRemoveAirdrop(square);
+                    if removeResult == "removed" then break end;
+                end
+                if removeResult == "removed" then break end;
+            end
+
+            -- Removing from table
+            if removeResult == "removed" then
+                table.remove(AirdropsData.OldSpecificAirdropsSpawned, i);
+            else
+                if removeResult == "airdropMissing" or removeResult == "vehicleExist" then
+                    print("[Air Drop] Specific airdrops cleaning, cannot remove, because: " .. removeResult);
+                    table.remove(AirdropsData.OldSpecificAirdropsSpawned, i);
                 end
             end
         end
@@ -748,7 +800,7 @@ function CheckForCreateAirdrop()
     -- Checa a espera de ticks
     if ticksPerCheck < ticksMax then
         ticksPerCheck = ticksPerCheck + 1;
-        return
+        return;
     end
     ticksPerCheck = 0;
     -- Verificamos se todos os airdrops já foram spawnados
@@ -764,47 +816,57 @@ function CheckForCreateAirdrop()
         -- Recebemos a posicao de spawn
         local spawnIndex = localAirdropsToSpawn[i];
         -- Se não existe um OldAirdrops para excluir então continue
-        if not checkOldAirdropsExistenceBySpawnIndex(spawnIndex) then
-            local spawnArea = airdropPositions[spawnIndex];
-            -- Recebemos o square
-            local square = getCell():getGridSquare(spawnArea.x, spawnArea.y, spawnArea.z)
-            -- Verificamos se o square esta sendo carregado
-            if square then
-                -- Adicionamos o airdrop no mundo
-                -- Notas importantes: addVehicleDebug necessita obrigatoriamente que square tenha
-                -- o elemento chunk, não se engane chunk é na verdade o campo de visão do jogador,
-                -- ou seja você só pode spawnar um veiculo se o player esta carregando o chunk por perto
-                local airdrop = addVehicleDebug("Base.airdrop", IsoDirections.N, nil, square);
-                -- Consertamos caso esteja quebrado
-                airdrop:repair();
-                -- Adicionamos os loots
-                spawnAirdropItems(airdrop);
-
-                -- Removemos da nossa lista de AirdropsToSpawn
-                removeElementFromAirdropsToSpawnBySpawnIndex(spawnIndex);
-
-                -- Adicionamos o aidrop para lista de SpawnedAirdrops
-                addAirdropToSpawnedAirdropsBySpawnIndex(spawnIndex, airdrop);
-
-                -- Precisamos verificar se DisableOldDespawn esta ativo
-                -- para podermos adicionar dizer que airdrop é true na lista de OldAirdropsData
-                if SandboxVars.AirdropMain.AirdropDisableOldDespawn then
-                    -- Colocamos para true
-                    addTrueToOldAirdropsDataBySpawnIndex(spawnIndex);
-                end
-
-                if SandboxVars.AirdropMain.AirdropConsoleDebugCoordinates then
-                    print(
-                        "[Air Drop] Chunk loaded, created new airdrop in X:" .. spawnArea.x .. " Y:" .. spawnArea.y);
-                end
-            else
-                -- Debug
-                if SandboxVars.AirdropMain.AirdropConsoleDebug then
-                    print("[Air Drop] Create airdrop: chunk not loaded in index: " .. spawnIndex);
+        local spawnArea = airdropPositions[spawnIndex];
+        -- Recebemos o square
+        local square = getCell():getGridSquare(spawnArea.x, spawnArea.y, spawnArea.z)
+        -- Verificamos se o square esta sendo carregado
+        if square then
+            -- Coletamos quaisquer veiculos existentes nessa area
+            local previousAirdrop = square:getVehicleContainer();
+            if previousAirdrop then
+                -- Check if is any old airdrop
+                if airdrop:getScriptName() == "Base.SurvivorSupplyDrop" then
+                    -- Removemos este airdrop antigo
+                    previousAirdrop:permanentlyRemove();
+                    -- Removes da lista de spawnados
+                    removeElementFromSpawnedAirdropsBySpawnIndex(spawnIndex);
+                    removeAirdropFromRemovingAirdropsBySpawnIndex(spawnIndex)
+                    removeAirdropFromOldAirdropsBySpawnIndex(spawnIndex);
+                    print("[Air Drop] A old airdrop exist in index: " ..
+                        spawnIndex .. " removed successfully, spawning the new one");
+                else     -- This is not any airdrop but is in the same square...
+                    removeElementFromAirdropsToSpawnBySpawnIndex(spawnIndex);
+                    print("[Air Drop] Any vehicle exist in the current spawn index: " ..
+                        spawnIndex .. " cannot spawn the airdrop, giving up...");
+                    return;
                 end
             end
+
+            -- Adicionamos o airdrop no mundo
+            -- Notas importantes: addVehicleDebug necessita obrigatoriamente que square tenha
+            -- o elemento chunk, não se engane chunk é na verdade o campo de visão do jogador,
+            -- ou seja você só pode spawnar um veiculo se o player esta carregando o chunk por perto
+            local airdrop = addVehicleDebug("Base.SurvivorSupplyDrop", IsoDirections.N, nil, square);
+            -- Consertamos caso esteja quebrado
+            airdrop:repair();
+            -- Adicionamos os loots
+            spawnAirdropItems(airdrop);
+
+            -- Removemos da nossa lista de AirdropsToSpawn
+            removeElementFromAirdropsToSpawnBySpawnIndex(spawnIndex);
+
+            -- Adicionamos o aidrop para lista de SpawnedAirdrops
+            addAirdropToSpawnedAirdropsBySpawnIndex(spawnIndex, airdrop);
+
+            if SandboxVars.AirdropMain.AirdropConsoleDebugCoordinates then
+                print(
+                    "[Air Drop] Chunk loaded, created new airdrop in X:" .. spawnArea.x .. " Y:" .. spawnArea.y);
+            end
         else
-            print("[Air drop] Cannot create the airdrop old airdrop still spawned in: " .. spawnIndex)
+            -- Debug
+            if SandboxVars.AirdropMain.AirdropConsoleDebug then
+                print("[Air Drop] Create airdrop: chunk not loaded in index: " .. spawnIndex);
+            end
         end
     end
 end
@@ -818,7 +880,7 @@ function SpawnSpecificAirdrop(spawnArea)
     -- Verificamos se o square é valido
     if square then
         -- Criamos o veiculo no mundo, mais info olhe CheckForCreateAirdrop
-        local airdrop = addVehicleDebug("Base.airdrop", IsoDirections.N, nil, square);
+        local airdrop = addVehicleDebug("Base.SurvivorSupplyDrop", IsoDirections.N, nil, square);
         -- Consertamos caso esteja quebrado
         airdrop:repair();
         -- Adicionamos os loots
@@ -845,6 +907,27 @@ Events.OnInitGlobalModData.Add(function(isNewGame)
     -- Null Check
     if not AirdropsData.OldAirdrops then AirdropsData.OldAirdrops = {} end
     if not AirdropsData.SpecificAirdropsSpawned then AirdropsData.SpecificAirdropsSpawned = {} end
+    if not AirdropsData.OldSpecificAirdropsSpawned then AirdropsData.OldSpecificAirdropsSpawned = {} end
+
+    if not SandboxVars.AirdropMain.AirdropDisableOldDespawn then
+        -- Iterar sobre SpecificAirdropsSpawned
+        for i, specificAirdrop in ipairs(AirdropsData.SpecificAirdropsSpawned) do
+            local found = false
+            -- Iterar sobre OldSpecificAirdropsSpawned
+            for j, oldAirdrop in ipairs(AirdropsData.OldSpecificAirdropsSpawned) do
+                if specificAirdrop.spawnArea == oldAirdrop.spawnArea then
+                    found = true
+                    break
+                end
+            end
+
+            -- Se não encontrou correspondência, adiciona o item a OldSpecificAirdropsSpawned
+            if not found then
+                table.insert(AirdropsData.OldSpecificAirdropsSpawned, specificAirdrop)
+            end
+        end
+    end
+
     -- Carrega todas as configurações
     readAirdropsPositions();
     readAirdropsLootTable();
@@ -854,206 +937,5 @@ Events.OnInitGlobalModData.Add(function(isNewGame)
         print("[Air Drop] Waiting for the first player connect to start removing old air drops")
         AirdropsData.RemovingOldAirdrops = deepcopy(AirdropsData.OldAirdrops);
         Events.OnTick.Add(ForceDespawnAirdrops);
-    end
-end)
-
-
---
--- AIRDROP SMOKE FLARE
---
--- Declaramos as variaveis
-local tickBeforeNextZed = 10;
-local actualTick = 0;
-
-local zombieOutfitTable = {
-    "AirCrew", "AmbulanceDriver", "ArmyCamoDesert", "ArmyCamoGreen", "ArmyServiceUniform",
-    "Bandit", "BaseballFan_KY", "BaseballFan_Rangers", "BaseballFan_Z", "BaseballPlayer_KY", "BaseballPlayer_Rangers",
-    "BaseballPlayer_Z", "Bathrobe", "Bedroom", "Biker", "Bowling", "BoxingBlue", "BoxingRed", "Camper", "Chef", "Classy",
-    "Cook_Generic", "Cook_IceCream", "Cook_Spiffos", "Cyclist", "Doctor", "DressLong", "DressNormal", "DressShort",
-    "Farmer", "Fireman", "FiremanFullSuit", "FitnessInstructor", "Fossoil", "Gas2Go", "Generic_Skirt", "Generic01",
-    "Generic02", "Generic03", "Generic04", "Generic05", "GigaMart_Employee", "Golfer", "HazardSuit", "Hobbo",
-    "HospitalPatient", "Jackie_Jaye", "Joan", "Jockey04", "Jockey05", "Kate", "Kirsty_Kormick", "Mannequin1",
-    "Mannequin2", "Nurse", "OfficeWorkerSkirt", "Party", "Pharmacist", "Police", "PoliceState", "Postal",
-    "PrivateMilitia", "Punk", "Ranger", "Redneck", "Rocker", "Santa", "SantaGreen", "ShellSuit_Black", "ShellSuit_Blue",
-    "ShellSuit_Green", "ShellSuit_Pink", "ShellSuit_Teal", "Ski Spiffo", "SportsFan", "StreetSports", "StripperBlack",
-    "StripperPink", "Student", "Survivalist", "Survivalist02", "Survivalist03", "Swimmer", "Teacher", "ThunderGas",
-    "TinFoilHat", "Tourist", "Trader", "TutorialMom", "Varsity", "Waiter_Classy", "Waiter_Diner", "Waiter_Market",
-    "Waiter_PileOCrepe", "Waiter_PizzaWhirled", "Waiter_Restaurant", "Waiter_Spiffo", "Waiter_TachoDelPancho",
-    "WaiterStripper", "Young", "Bob", "ConstructionWorker", "Dean", "Duke", "Fisherman", "Frank_Hemingway", "Ghillie",
-    "Groom", "HockeyPsycho", "Hunter", "Inmate", "InmateEscaped", "InmateKhaki", "Jewelry", "Jockey01", "Jockey02",
-    "Jockey03", "Jockey06", "John", "Judge_Matt_Hass", "MallSecurity", "Mayor_West_point", "McCoys", "Mechanic",
-    "MetalWorker", "OfficeWorker", "PokerDealer", "PoliceRiot", "Priest", "PrisonGuard", "Rev_Peter_Watts", "Raider",
-    "Security", "Sir_Twiggy", "Thug", "TutorialDad", "Veteran", "Waiter_TacoDelPancho", "Woodcut"
-};
-
--- Mude isso para os zumbis raros que voce quer durante o airdrop, esses zumbis fazem parte do
--- mod Factoins Clothes do Project Factions do Dogao Games
-local zombieRareOutfitTable = {
-    "KATTAJ1_Army_Black", "KATTAJ1_Army_Green", "KATTAJ1_Army_Desert", "KATTAJ1_Army_White", "Stalker", "Nomad",
-    "OminousNomad", "Prepper", "Headhunter", "DeadlyHeadhunter", "Amazona"
-}
-local playerSmokeFlares = {};
-
--- Adicionamos uma unidade de zumbi ao redor do jogador
-local function SpawnOneZombie(player)
-    local pLocation = player:getCurrentSquare();
-    local zLocationX = 0;
-    local zLocationY = 0;
-    local canSpawn = false;
-    local sandboxDistance = SandboxVars.AirdropMain.SmokeFlareHordeDistanceSpawn;
-    for i = 0, 100 do
-        if ZombRand(2) == 0 then
-            zLocationX = ZombRand(10) - 10 + sandboxDistance;
-            zLocationY = ZombRand(sandboxDistance * 2) - sandboxDistance;
-            if ZombRand(2) == 0 then
-                zLocationX = 0 - zLocationX;
-            end
-        else
-            zLocationY = ZombRand(10) - 10 + sandboxDistance;
-            zLocationX = ZombRand(sandboxDistance * 2) - sandboxDistance;
-            if ZombRand(2) == 0 then
-                zLocationY = 0 - zLocationY;
-            end
-        end
-        zLocationX = zLocationX + pLocation:getX();
-        zLocationY = zLocationY + pLocation:getY();
-        local spawnSpace = getWorld():getCell():getGridSquare(zLocationX, zLocationY, 0);
-        if spawnSpace then
-            local isSafehouse = SafeHouse.getSafeHouse(spawnSpace);
-            if spawnSpace:isSafeToSpawn() and spawnSpace:isOutside() and isSafehouse == nil then
-                canSpawn = true;
-                break
-            end
-        else
-            print("[Air Drop] Zombie: Space not Loaded " .. player:getUsername());
-        end
-        if i == 100 then
-            print("[Air Drop] Zombie: Can't find a place to spawn " .. player:getUsername());
-        end
-    end
-    if canSpawn then
-        -- Zumbis raros tem 1% de chance de aparecer
-        -- a cada 100 zumbis 1 vai ser raro
-        local outfit
-        if ZombRand(100) + 1 == 1 then
-            outfit = zombieRareOutfitTable[ZombRand(11) + 1];
-        else
-            outfit = zombieOutfitTable[ZombRand(139) + 1];
-        end
-        -- Adicionamos o zumbi
-        addZombiesInOutfit(zLocationX, zLocationY, 0, 1, outfit, 50, false, false, false, false, 1.5);
-        -- Adiciona mais um zumbi a tabela zombie spawned
-        playerBeacons[player:getUsername()]["zombieSpawned"] = playerBeacons[player:getUsername()]["zombieSpawned"] +
-            1;
-        -- Por fim adicionamos um barulho para os zumbis ouvirem e perseguir o jogador
-        getWorldSoundManager():addSound(player, player:getCurrentSquare():getX(),
-            player:getCurrentSquare():getY(), player:getCurrentSquare():getZ(), 200, 10);
-    end
-end
-
--- Inicia a horda, se specificPlayer for adicionado como parametro
--- a horda começara somente por ele
-function StartHorde(specificPlayer)
-    -- Valor aleatorizado entre metade e o dobro
-    local zombieCount = SandboxVars.AirdropMain.SmokeFlareHorde * ((ZombRand(150) / 100) + 0.5);
-
-    -- Calculamos a dificuldade
-    local difficulty
-    if SandboxVars.AirdropMain.SmokeFlareHorde > zombieCount then
-        difficulty = "Easy";
-    else
-        difficulty = "Hard";
-    end
-
-    -- Adicionamos a tabela de spawn do jogador
-    playerSmokeFlares[specificPlayer:getUsername()] = {};
-    playerSmokeFlares[specificPlayer:getUsername()]["zombieCount"] = zombieCount;
-    playerSmokeFlares[specificPlayer:getUsername()]["zombieSpawned"] = 0;
-    playerSmokeFlares[specificPlayer:getUsername()]["player"] = specificPlayer;
-    playerSmokeFlares[specificPlayer:getUsername()]["airdropArea"] = {
-        x = specificPlayer:getX(),
-        y = specificPlayer:getY(),
-        z =
-            specificPlayer:getZ()
-    };
-
-    -- Emite o alerta ao jogador
-    sendServerCommand(specificPlayer, "ServerAirdrop", "smokeflare", { difficulty = difficulty });
-
-    --Mensagem de log
-    print("[Air Drop] Smoke Flare called, spawning on: " .. specificPlayer:getUsername() .. " quantity: " .. zombieCount);
-
-    -- Adicionamos o OnTick para spawnar os zumbis
-    Events.OnTick.Add(CheckHordeRemainingForSmokeFlare);
-end
-
--- Checamos se a horda já foi finalizada
-function CheckHordeRemainingForSmokeFlare()
-    -- Atualizamos o tick
-    if actualTick <= tickBeforeNextZed then
-        actualTick = actualTick + 1;
-        return
-    end
-    actualTick = 0;
-
-    -- Fazemos uma varredura para verificar se todos os zumbis ja spawnaram para o player
-    local allZombiesSpawned = true;
-    for playerUsername, playerSpawns in pairs(playerSmokeFlares) do
-        -- Recebemos o personagem atraves do username
-        local players = getOnlinePlayers();
-        local found = false;
-        for i = 0, players:size() - 1 do
-            -- Obtém o jogador pelo índice
-            local player = players:get(i);
-            -- Fazemos uma varredura para descobrir o IsoPlayer
-            if player:getUsername() == playerUsername then
-                found = true;
-                -- Verificamos se o jogador já spawnou o suficiente
-                if playerSpawns.zombieSpawned < playerSpawns.zombieCount then
-                    allZombiesSpawned = false;
-                    SpawnOneZombie(player);
-                end
-            end
-        end
-        -- Se não encontrou o jogador remove porque ele kitou corno
-        if not found then
-            playerSmokeFlares[playerUsername] = nil;
-        end
-    end
-
-    -- Damos dispose na função caso todos os zumbis foram spawnados
-    if allZombiesSpawned then
-        -- Resetamos as Variaveis
-        Events.OnTick.Remove(CheckHordeRemainingForSmokeFlare);
-        for playerUsername, playerSpawns in pairs(playerSmokeFlares) do
-            local players = getOnlinePlayers();
-            -- Avisamos o jogador que spawnou o airdrop
-            for i = 0, players:size() - 1 do
-                -- Obtém o jogador pelo índice
-                local player = players:get(i);
-                -- Fazemos uma varredura para descobrir o IsoPlayer
-                if player:getUsername() == playerUsername then
-                    sendServerCommand(player, "ServerHorde", "smokeflare_finished", nil);
-                end
-            end
-            SpawnSpecificAirdrop(playerSpawns.airdropArea);
-        end
-        playerSmokeFlares = {};
-        print("[Air Drop] Smoke Flare finished airdrop has been Spawned");
-        return
-    end
-end
-
--- Handler para as mensagens do client
-Events.OnClientCommand.Add(function(module, command, player, args)
-    if module == "ServerAirdrop" and command == "startBeacon" then
-        -- Precisamos checar se o jogador já não esta em uma horda de beacon
-        for playerUsername, playerSpawns in pairs(playerSmokeFlares) do
-            if player:getUsername() == playerUsername then
-                print("[Air Drop] " .. player:getUsername() .. " trying to use a smoke flare again...")
-                return;
-            end
-        end
-        StartHorde(player);
     end
 end)
