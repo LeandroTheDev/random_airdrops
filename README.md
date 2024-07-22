@@ -20,6 +20,12 @@ The mod is compatible with dedicated servers and singleplayer
 - when the timer goes below the 0 the airdrop will be removed from the world and from the cache if not created yet, unless the player is loading the chunk of the airdrop
 - when the server starts all old airdrops will be despawned when the chunk loads
 
+### Important
+- Disable Despawn and Disable Old Spawn, are features not very tested, use with careful
+
+### Questions
+- Can i upload this to workshop ? yes.
+
 ### For Modders
 - You can free modify and make your own modification of this mod, also this mod have a [wiki framework](https://github.com/LeandroTheDev/random_airdrops/wiki/Framework) to you undestand and make a script or modification of this mod
 
