@@ -24,7 +24,12 @@ The mod is compatible with dedicated servers and singleplayer
 - Disable Despawn and Disable Old Spawn, are features not very tested, use with careful
 
 ### Questions
-- Can i upload this to workshop ? yes.
+- Can i use in my server? yes
+- Can i reupload this to workshop? yes
+- Can i modify this mod? yes
+- Can i share this mod? yes
+- Can i steal this mod? only if the name is changed
+- Can i charge for this mod? only if the name is changed
 
 ### For Modders
 - You can free modify and make your own modification of this mod, also this mod have a [wiki framework](https://github.com/LeandroTheDev/random_airdrops/wiki/Framework) to you undestand and make a script or modification of this mod
