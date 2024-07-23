@@ -359,12 +359,40 @@ local function removeAirdropFromRemovingAirdropsBySpawnIndex(spawnIndex)
     end
 end
 
--- DEPRECATED, not necessary: Verify with the airdrop spawnIndex if exist any OldAirdrop in that position
+-- Verify if the airdrop spawnIndex any OldAirdrop in that position
 local function checkOldAirdropsExistenceBySpawnIndex(spawnIndex)
     -- Swipe OldAirdrops
     for i = 1, #AirdropsData.OldAirdrops do
         -- Verifying if the ID is the same
         if spawnIndex == AirdropsData.OldAirdrops[i] then
+            -- Exist
+            return true;
+        end
+    end
+    -- Not exist
+    return false;
+end
+
+-- Verify if the airdrop spawnIndex any AirdropsToSpawn in that position
+local function checkAirdropsToSpawnExistenceBySpawnIndex(spawnIndex)
+    -- Swipe OldAirdrops
+    for i = 1, #AirdropsToSpawn do
+        -- Verifying if the ID is the same
+        if spawnIndex == AirdropsToSpawn[i] then
+            -- Exist
+            return true;
+        end
+    end
+    -- Not exist
+    return false;
+end
+
+-- Verify if the airdrop spawnIndex exist in RemovingOldAirdrops
+local function checkRemovingOldAirdropsExistenceBySpawnIndex(spawnIndex)
+    -- Swipe OldAirdrops
+    for i = 1, #AirdropsData.RemovingOldAirdrops do
+        -- Verifying if the ID is the same
+        if spawnIndex == AirdropsData.RemovingOldAirdrops[i] then
             -- Exist
             return true;
         end
@@ -428,7 +456,7 @@ end
 function SpawnAirdrop()
     local spawnIndex = 0;
 
-    -- Select any area randomly 
+    -- Select any area randomly
     local tries = 20;
     while tries > 0 do
         -- Check if airdropPositions is empty
@@ -821,46 +849,54 @@ function CheckForCreateAirdrop()
         local square = getCell():getGridSquare(spawnArea.x, spawnArea.y, spawnArea.z)
         -- Verificamos se o square esta sendo carregado
         if square then
-            -- Coletamos quaisquer veiculos existentes nessa area
-            local previousAirdrop = square:getVehicleContainer();
-            if previousAirdrop then
-                -- Check if is any old airdrop
-                if airdrop:getScriptName() == "Base.SurvivorSupplyDrop" then
-                    -- Removemos este airdrop antigo
-                    previousAirdrop:permanentlyRemove();
-                    -- Removes da lista de spawnados
-                    removeElementFromSpawnedAirdropsBySpawnIndex(spawnIndex);
-                    removeAirdropFromRemovingAirdropsBySpawnIndex(spawnIndex)
-                    removeAirdropFromOldAirdropsBySpawnIndex(spawnIndex);
-                    print("[Air Drop] A old airdrop exist in index: " ..
-                        spawnIndex .. " removed successfully, spawning the new one");
-                else     -- This is not any airdrop but is in the same square...
-                    removeElementFromAirdropsToSpawnBySpawnIndex(spawnIndex);
-                    print("[Air Drop] Any vehicle exist in the current spawn index: " ..
-                        spawnIndex .. " cannot spawn the airdrop, giving up...");
-                    return;
+            -- We check the existence of old airdrop been deleted
+            if not checkRemovingOldAirdropsExistenceBySpawnIndex(spawnIndex) then
+                -- Coletamos quaisquer veiculos existentes nessa area
+                local previousAirdrop = square:getVehicleContainer();
+                if previousAirdrop then
+                    -- Check if is any old airdrop
+                    if airdrop:getScriptName() == "Base.SurvivorSupplyDrop" then
+                        -- Removemos este airdrop antigo
+                        previousAirdrop:permanentlyRemove();
+                        -- Removes da lista de spawnados
+                        removeElementFromSpawnedAirdropsBySpawnIndex(spawnIndex);
+                        removeAirdropFromRemovingAirdropsBySpawnIndex(spawnIndex)
+                        removeAirdropFromOldAirdropsBySpawnIndex(spawnIndex);
+                        print("[Air Drop] A old airdrop exist in index: " ..
+                            spawnIndex .. " removed successfully, spawning the new one");
+                    else -- This is not any airdrop but is in the same square...
+                        removeElementFromAirdropsToSpawnBySpawnIndex(spawnIndex);
+                        print("[Air Drop] Any vehicle exist in the current spawn index: " ..
+                            spawnIndex .. " cannot spawn the airdrop, giving up...");
+                        return;
+                    end
                 end
-            end
+                -- Adicionamos o airdrop no mundo
+                -- Notas importantes: addVehicleDebug necessita obrigatoriamente que square tenha
+                -- o elemento chunk, não se engane chunk é na verdade o campo de visão do jogador,
+                -- ou seja você só pode spawnar um veiculo se o player esta carregando o chunk por perto
+                local airdrop = addVehicleDebug("Base.SurvivorSupplyDrop", IsoDirections.N, nil, square);
+                -- Consertamos caso esteja quebrado
+                airdrop:repair();
+                -- Adicionamos os loots
+                spawnAirdropItems(airdrop);
 
-            -- Adicionamos o airdrop no mundo
-            -- Notas importantes: addVehicleDebug necessita obrigatoriamente que square tenha
-            -- o elemento chunk, não se engane chunk é na verdade o campo de visão do jogador,
-            -- ou seja você só pode spawnar um veiculo se o player esta carregando o chunk por perto
-            local airdrop = addVehicleDebug("Base.SurvivorSupplyDrop", IsoDirections.N, nil, square);
-            -- Consertamos caso esteja quebrado
-            airdrop:repair();
-            -- Adicionamos os loots
-            spawnAirdropItems(airdrop);
+                -- Removemos da nossa lista de AirdropsToSpawn
+                removeElementFromAirdropsToSpawnBySpawnIndex(spawnIndex);
 
-            -- Removemos da nossa lista de AirdropsToSpawn
-            removeElementFromAirdropsToSpawnBySpawnIndex(spawnIndex);
+                -- Adicionamos o aidrop para lista de SpawnedAirdrops
+                addAirdropToSpawnedAirdropsBySpawnIndex(spawnIndex, airdrop);
 
-            -- Adicionamos o aidrop para lista de SpawnedAirdrops
-            addAirdropToSpawnedAirdropsBySpawnIndex(spawnIndex, airdrop);
-
-            if SandboxVars.AirdropMain.AirdropConsoleDebugCoordinates then
-                print(
-                    "[Air Drop] Chunk loaded, created new airdrop in X:" .. spawnArea.x .. " Y:" .. spawnArea.y);
+                if SandboxVars.AirdropMain.AirdropConsoleDebugCoordinates then
+                    print(
+                        "[Air Drop] Chunk loaded, created new airdrop in X:" .. spawnArea.x .. " Y:" .. spawnArea.y);
+                end
+            else
+                if SandboxVars.AirdropMain.AirdropConsoleDebugCoordinates then
+                    print(
+                        "[Air Drop] Cannot create the airdrop in X:" ..
+                        spawnArea.x .. " Y:" .. spawnArea.y .. " the index is already in removal: " .. spawnIndex);
+                end
             end
         else
             -- Debug
