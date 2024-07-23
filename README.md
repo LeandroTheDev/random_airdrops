@@ -11,7 +11,7 @@ The mod is compatible with dedicated servers and singleplayer
 - If the servers close, old airdrops will be deleted automatically (Configurable)
 - Fully customizable loot table (see the github wiki)
 - Fully customizable spawn coordinates (see the github wiki)
-- Where is the Smoke Flare? smoke flare is removed from the random airdrops.
+- Where is the [Smoke Flare](https://github.com/LeandroTheDev/ra_smoke_flares/tree/main)? smoke flare is removed from the Random Airdrops, and now is a addon mod with the name [RA Smoke Flare](https://github.com/LeandroTheDev/ra_smoke_flares/tree/main)
 
 ### How it works?
 - The server random a chance if the chances hits ok then the airdrop coordinates is stored in "cache"
