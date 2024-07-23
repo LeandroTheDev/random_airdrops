@@ -679,7 +679,7 @@ function ForceDespawnAirdrops()
             -- Verificamos se veiculo não está nulo
             if airdrop then
                 -- Verificamos se o veiculo é o airdrop
-                if airdrop:getScriptName() == "Base.SurvivorSupplyDrop" then
+                if airdrop:getScriptName() == "Base.airdrop" then
                     -- Removemos definitivamente
                     airdrop:permanentlyRemove();
                     removeAirdropFromRemovingAirdropsBySpawnIndex(spawnIndex)
@@ -732,7 +732,7 @@ function ForceDespawnAirdrops()
                     -- Verificamos se veiculo não está nulo
                     if airdrop then
                         -- Verificamos se o veiculo é o airdrop
-                        if airdrop:getScriptName() == "Base.SurvivorSupplyDrop" then
+                        if airdrop:getScriptName() == "Base.airdrop" then
                             -- Removemos definitivamente
                             airdrop:permanentlyRemove();
                             -- Removemos do indice
@@ -777,7 +777,7 @@ function ForceDespawnAirdrops()
                     -- Verificamos se veiculo não está nulo
                     if airdrop then
                         -- Verificamos se o veiculo é o airdrop
-                        if airdrop:getScriptName() == "Base.SurvivorSupplyDrop" then
+                        if airdrop:getScriptName() == "Base.airdrop" then
                             -- Removemos definitivamente
                             airdrop:permanentlyRemove();
                             -- Removes do indice old
@@ -855,7 +855,7 @@ function CheckForCreateAirdrop()
                 local previousAirdrop = square:getVehicleContainer();
                 if previousAirdrop then
                     -- Check if is any old airdrop
-                    if airdrop:getScriptName() == "Base.SurvivorSupplyDrop" then
+                    if airdrop:getScriptName() == "Base.airdrop" then
                         -- Removemos este airdrop antigo
                         previousAirdrop:permanentlyRemove();
                         -- Removes da lista de spawnados
@@ -875,7 +875,7 @@ function CheckForCreateAirdrop()
                 -- Notas importantes: addVehicleDebug necessita obrigatoriamente que square tenha
                 -- o elemento chunk, não se engane chunk é na verdade o campo de visão do jogador,
                 -- ou seja você só pode spawnar um veiculo se o player esta carregando o chunk por perto
-                local airdrop = addVehicleDebug("Base.SurvivorSupplyDrop", IsoDirections.N, nil, square);
+                local airdrop = addVehicleDebug("Base.airdrop", IsoDirections.N, nil, square);
                 -- Consertamos caso esteja quebrado
                 airdrop:repair();
                 -- Adicionamos os loots
@@ -916,7 +916,7 @@ function SpawnSpecificAirdrop(spawnArea)
     -- Verificamos se o square é valido
     if square then
         -- Criamos o veiculo no mundo, mais info olhe CheckForCreateAirdrop
-        local airdrop = addVehicleDebug("Base.SurvivorSupplyDrop", IsoDirections.N, nil, square);
+        local airdrop = addVehicleDebug("Base.airdrop", IsoDirections.N, nil, square);
         -- Consertamos caso esteja quebrado
         airdrop:repair();
         -- Adicionamos os loots
