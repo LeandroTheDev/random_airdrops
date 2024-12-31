@@ -1,6 +1,8 @@
 ---@diagnostic disable: undefined-global, deprecated
 -- By bobodev the furious has a name 😊😊
 
+local isSingleplayer = (not isClient() and not isServer());
+
 -- Performance variables
 -- ticks to wait to spawn or despawn the airdrop
 local ticksPerCheck = 0;                                   -- Used for spawn
@@ -430,7 +432,7 @@ function CheckAirdrop()
         -- Get the online player list
         local players = getOnlinePlayers();
         -- Singleplayer compatibility
-        if not players then
+        if isSingleplayer then
             -- Sound to send to the player
             local alarmSound = "airdrop" .. tostring(ZombRand(1));
             -- Alocate the sound in memory
